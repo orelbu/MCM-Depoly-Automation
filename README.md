@@ -44,7 +44,7 @@ Email Notifications: Built-in SMTP support to alert administrators when a deploy
 Safe Lifecycle Management: Safely removes active deployments before deleting or updating an application, preventing orphaned SCCM objects.
 
 📁 Folder Structure
-
+```text
 MCM-Deploy-Automation/
 ├── SCCM-Manager.ps1        # The main GUI application for managing settings and tasks
 ├── Start-AppWatcher.ps1    # The watcher script that monitors folders and triggers actions
@@ -54,7 +54,7 @@ MCM-Deploy-Automation/
 └── AppConfigs/             # (Auto-generated) Contains JSON configuration files for each monitored app
     ├── AppName1.json
     └── AppName2.json
-
+```
 ⚙️ Core Scripts Explained
 
 1. SCCM-Manager.ps1 (Unified Graphical Interface)
