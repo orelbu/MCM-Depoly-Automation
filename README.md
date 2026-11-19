@@ -20,6 +20,8 @@ Sends email notifications upon success or failure.
 
 Managing software deployments in SCCM is often a lengthy, manual, and multi-step process. This project addresses several key IT challenges:
 
+Airgapped & High-Security Network Support: In highly restricted or airgapped environments, every installation file must be rigorously inspected, scanned, and whitelisted before entering the secure network. Because external software catalogs and automated MCM synchronization features cannot function without internet access, packaging approved software often becomes a severe manual bottleneck. This tool bridges that gap perfectly: once an installation file clears all security gateways (like CDR, Sandbox detonation, or hash whitelisting) and is transferred to the secure zone, administrators can simply drop the approved MSI into the monitored folder. The tool instantly ingests it into SCCM, adhering to strict security workflows while completely bypassing the need for manual packaging.
+
 Time Savings & Error Reduction: Eliminates manual clicks in the SCCM console. The entire process is handled behind the scenes consistently and securely.
 
 Folder-Based Automation (Drop-and-Deploy): Enables a streamlined workflow where simply copying an MSI file to a specific folder triggers a background task that handles the entire SCCM setup process.
@@ -27,6 +29,7 @@ Folder-Based Automation (Drop-and-Deploy): Enables a streamlined workflow where 
 Accessibility for Helpdesk/Support: The unified GUI allows IT staff who are not SCCM experts or PowerShell developers to configure automated deployments effortlessly.
 
 Centralized Management & Tracking: The system stores all configurations in organized JSON files, manages background Scheduled Tasks, and maintains robust logs.
+
 
 ✨ Key Features
 
