@@ -46,17 +46,14 @@ Safe Lifecycle Management: Safely removes active deployments before deleting or 
 📁 Folder Structure
 
 MCM-Deploy-Automation/
-│
-├── SCCM-Manager.ps1         # The main GUI application for managing settings and tasks
-├── Start-AppWatcher.ps1     # The watcher script that monitors folders and triggers actions
-├── Create-SCCMApp.ps1       # The payload script handling SCCM creation and deployment
-├── Remove-SCCMApp.ps1       # The payload script for safely cleaning up old apps/deployments
-├── Env-Config.json          # (Auto-generated) Stores global SCCM environment settings
-│
-└── AppConfigs/              # (Auto-generated) Contains JSON configuration files for each monitored app
+├── SCCM-Manager.ps1        # The main GUI application for managing settings and tasks
+├── Start-AppWatcher.ps1    # The watcher script that monitors folders and triggers actions
+├── Create-SCCMApp.ps1      # The payload script handling SCCM creation and deployment
+├── Remove-SCCMApp.ps1      # The payload script for safely cleaning up old apps/deployments
+├── Env-Config.json         # (Auto-generated) Stores global SCCM environment settings
+└── AppConfigs/             # (Auto-generated) Contains JSON configuration files for each monitored app
     ├── AppName1.json
     └── AppName2.json
-
 
 ⚙️ Core Scripts Explained
 
