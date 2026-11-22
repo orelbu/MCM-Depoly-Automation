@@ -113,11 +113,13 @@ Launch the Tool: Run .\SCCM-Manager.ps1 as an Administrator.
 
 Configure Environment: Click Global Settings and set your Site Code, Log Directory, and SMTP details.
 
-Add an Application: Click Add Application, enter the application name, target folder, DP group, and target Collection ID. Supply the task password to register the background watcher.
+Add an Application: Click Add Application, enter the application name, target folder, DP group, and target Collection ID. Supply the task user & password* to register the background watcher.
 
 Deploy: Simply drop an .msi file into the designated folder. The system will detect it and automate the rest!
 
 Monitor: Check the log files in your configured Log Directory or wait for the SMTP email notification.
+
+*It is preferable to use a service account authorized for batch execution, with the necessary permissions granted both in WMI (under the SMS entry) and in the GUI (via an appropriate role).
 
 🤝 Open Source & Contributing
 
