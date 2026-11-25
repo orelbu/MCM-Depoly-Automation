@@ -1,68 +1,98 @@
 param (
-    [Parameter(Mandatory=$true)]
-    [string]$AppName,
-
-    [Parameter(Mandatory=$true)]
-    [string]$MsiNetworkPath, 
-
-    [Parameter(Mandatory=$true)]
-    [string]$CollectionName,
-
-    [string]$DpGroupName = "All DPs", 
-    [string]$SiteCode = "XYZ", 
-    
-    # Log directory path parameter
-    [string]$LogDirectory = "C:\Temp\SCCM_Logs"
+    [string]$AppConfigPath,
+    [string]$DroppedMsiPath = "" 
 )
 
-# 1. Logging Environment Setup
-# Create the directory if it does not exist
-if (-not (Test-Path $LogDirectory)) {
-    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+$EnvConfig = Get-Content (Join-Path $PSScriptRoot "Env-Config.json") -Raw | ConvertFrom-Json
+$AppConfig = Get-Content $AppConfigPath -Raw | ConvertFrom-Json
+
+$AppName = $AppConfig.AppName
+$SiteCode = $EnvConfig.SiteCode
+$LogDir = $EnvConfig.LogDirectory
+
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+
+$SafeAppName = $AppName -replace '[\\/:\*\?"<>\| ]', '_'
+$LogFile = Join-Path $LogDir "SCCM_AppCreation_$SafeAppName.log"
+
+function Write-Log([string]$Message, [string]$Level="INFO") {
+    $LogEntry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message"
+    Add-Content -Path $LogFile -Value $LogEntry
 }
 
-# Sanitize the application name to be used as a valid file name
-$CleanAppName = $AppName -replace '[\\/:\*\?"<>\| ]', '_'
-$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $LogDirectory "SCCM_AppCreation_$($CleanAppName)_$($Timestamp).log"
-
-# Start recording the output to the log file
-Start-Transcript -Path $LogFile -NoClobber
-
-# --- Start of SCCM Process ---
-
-$ModuleName = "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1"
-if (Test-Path $ModuleName) {
-    Import-Module $ModuleName
-}
-
-Set-Location "$($SiteCode):"
+# --- SYSTEM-WIDE MUTEX LOCK ---
+$MutexName = "Global\SCCM_CreateApp_$SafeAppName"
+$Mutex = New-Object System.Threading.Mutex($false, $MutexName)
+$LockAcquired = $false
 
 try {
-    Write-Host "Creating Application: $AppName" -ForegroundColor Cyan
-    New-CMApplication -Name $AppName -Description "Created automatically via PowerShell script" -ErrorAction Stop
-
-    Write-Host "Adding MSI Deployment Type from $MsiNetworkPath" -ForegroundColor Cyan
-    $FolderPath = Split-Path $MsiNetworkPath
-    $FileName = Split-Path $MsiNetworkPath -Leaf
-    Add-CMMsiDeploymentType -ApplicationName $AppName -ContentLocation $FolderPath -SourceFileName $FileName -Force -ErrorAction Stop
-
-    Write-Host "Distributing content to DP Group: $DpGroupName" -ForegroundColor Cyan
-    Start-CMContentDistribution -ApplicationName $AppName -DistributionPointGroupName $DpGroupName -ErrorAction Stop
-
-    Write-Host "Deploying '$AppName' to Collection '$CollectionName'" -ForegroundColor Cyan
-    New-CMApplicationDeployment -ApplicationName $AppName -CollectionName $CollectionName -DeployAction Install -DeployPurpose Required -UserNotification DisplaySoftwareCenterOnly -ErrorAction Stop
-
-    Write-Host "Application '$AppName' created, distributed, and deployed successfully!" -ForegroundColor Green
-
-} catch {
-    Write-Host "An error occurred during the process:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Yellow
+    # WaitOne(0) checks immediately without waiting. Returns $false if already locked.
+    $LockAcquired = $Mutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    # Previous process crashed without releasing; we now own the lock.
+    $LockAcquired = $true
 }
 
-# --- End of SCCM Process ---
+if (-not $LockAcquired) {
+    Write-Log "Another instance of Create-SCCMApp.ps1 is already running for '$AppName'. Exiting to prevent duplicate execution." "WARN"
+    $Mutex.Dispose()
+    exit 0
+}
+# ------------------------------
 
-# Stop logging
-Stop-Transcript
+try {
+    if ($DroppedMsiPath -ne "" -and (Test-Path $DroppedMsiPath)) {
+        $MsiNetworkPath = $DroppedMsiPath
+    } else {
+        $MsiNetworkPath = $AppConfig.MsiNetworkPath
+    }
 
-Write-Host "Process finished. Log file saved to: $LogFile" -ForegroundColor Cyan
+    Write-Log "Starting creation phase for: $AppName"
+    Write-Log "Target MSI File: $MsiNetworkPath"
+
+    if (-not $MsiNetworkPath.EndsWith(".msi", [System.StringComparison]::InvariantCultureIgnoreCase)) {
+        Write-Log "CRITICAL ERROR: The path '$MsiNetworkPath' is not an MSI file. SCCM requires a direct path to an .msi file." "ERROR"
+        exit 1
+    }
+
+    if (Test-Path $EnvConfig.SccmModulePath) { Import-Module $EnvConfig.SccmModulePath }
+    if (-not (Get-PSDrive -Name $SiteCode -ErrorAction SilentlyContinue)) {
+        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $env:COMPUTERNAME -Description "SCCM" | Out-Null
+    }
+    Set-Location "$($SiteCode):"
+
+    try {
+        Write-Log "Resolving exact Collection ID for '$($AppConfig.CollectionName)'"
+        
+        $TargetCollection = Get-CMCollection -Name $AppConfig.CollectionName
+        
+        if (-not $TargetCollection) {
+            throw "Could not find any collection named '$($AppConfig.CollectionName)'."
+        }
+        
+        if ($TargetCollection.Count -gt 1) {
+            throw "Found $($TargetCollection.Count) collections matching '$($AppConfig.CollectionName)'. Please use the exact Collection ID in the configuration GUI instead of the name to avoid conflicts."
+        }
+
+        $ExactCollectionId = $TargetCollection.CollectionID
+        Write-Log "Resolved Collection ID: $ExactCollectionId"
+
+        New-CMApplication -Name $AppName -Description "Auto-deployed" -ErrorAction Stop
+        Add-CMMsiDeploymentType -ApplicationName $AppName -ContentLocation $MsiNetworkPath -Force -ErrorAction Stop
+        Start-CMContentDistribution -ApplicationName $AppName -DistributionPointGroupName $AppConfig.DpGroupName -ErrorAction Stop
+        
+        New-CMApplicationDeployment -ApplicationName $AppName -CollectionId $ExactCollectionId -DeployAction Install -DeployPurpose Required -UserNotification DisplaySoftwareCenterOnly -ErrorAction Stop
+        
+        Write-Log "Deployment Successful!"
+        Send-MailMessage -SmtpServer $EnvConfig.SmtpServer -From $EnvConfig.EmailFrom -To $EnvConfig.EmailTo -Subject "SCCM Success: $AppName" -Body "Deployed $AppName using file $MsiNetworkPath to Collection ID $ExactCollectionId" -Encoding UTF8
+    } catch {
+        Write-Log $_.Exception.Message "ERROR"
+        Send-MailMessage -SmtpServer $EnvConfig.SmtpServer -From $EnvConfig.EmailFrom -To $EnvConfig.EmailTo -Subject "SCCM FAILED: $AppName" -Body "Error:`n$($_.Exception.Message)" -Encoding UTF8
+    }
+} finally {
+    # Always release the lock when the script finishes or exits
+    if ($LockAcquired) {
+        $Mutex.ReleaseMutex()
+    }
+    $Mutex.Dispose()
+}
